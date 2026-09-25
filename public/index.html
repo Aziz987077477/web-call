@@ -3,162 +3,447 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Приватный звонок</title>
+  <title>Семейный Мессенджер</title>
   <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      font-family: Arial, sans-serif;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
       background: #121212;
       color: #fff;
       display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
       height: 100vh;
-      margin: 0;
+      overflow: hidden;
     }
-    .card {
+
+    /* Модальное окно входа / регистрации */
+    .modal-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.85);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+    }
+    .modal {
       background: #1e1e1e;
-      padding: 24px;
+      padding: 30px;
       border-radius: 12px;
-      box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+      width: 90%;
+      max-width: 360px;
       text-align: center;
-      width: 300px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.6);
     }
-    select, button {
+    .modal h2 { margin-bottom: 20px; color: #4caf50; }
+    .modal input, .modal select {
       width: 100%;
       padding: 12px;
-      margin-top: 12px;
+      margin-bottom: 15px;
       border-radius: 6px;
-      border: none;
-      font-size: 16px;
-    }
-    select {
+      border: 1px solid #333;
       background: #2b2b2b;
       color: #fff;
+      font-size: 15px;
     }
-    button {
-      background: #28a745;
+    .modal button {
+      width: 100%;
+      padding: 12px;
+      background: #4caf50;
+      border: none;
+      border-radius: 6px;
       color: #fff;
       font-weight: bold;
+      font-size: 16px;
       cursor: pointer;
     }
-    button:disabled {
-      background: #555;
+
+    /* Основной интерфейс */
+    #app-container {
+      display: flex;
+      width: 100%;
+      height: 100%;
     }
-    #status {
-      margin-top: 15px;
+
+    /* Сетка видео */
+    #video-section {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      background: #000;
+      position: relative;
+    }
+    #video-grid {
+      flex: 1;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 10px;
+      padding: 10px;
+      overflow-y: auto;
+      align-items: center;
+      justify-content: center;
+    }
+    .video-card {
+      position: relative;
+      background: #222;
+      border-radius: 10px;
+      overflow: hidden;
+      aspect-ratio: 16 / 9;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .video-label {
+      position: absolute;
+      bottom: 8px;
+      left: 8px;
+      background: rgba(0, 0, 0, 0.6);
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-size: 12px;
+      color: #fff;
+    }
+
+    /* Панель управления звонком */
+    #controls {
+      height: 70px;
+      background: #181818;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 15px;
+    }
+    .control-btn {
+      padding: 12px 20px;
+      border-radius: 30px;
+      border: none;
+      background: #333;
+      color: #fff;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    .control-btn.active { background: #d9534f; }
+    .control-btn.leave { background: #e53935; }
+
+    /* Текстовый чат */
+    #chat-section {
+      width: 320px;
+      background: #1e1e1e;
+      border-left: 1px solid #2d2d2d;
+      display: flex;
+      flex-direction: column;
+    }
+    #chat-header {
+      padding: 15px;
+      background: #252525;
+      font-weight: bold;
+      border-bottom: 1px solid #333;
+    }
+    #chat-messages {
+      flex: 1;
+      padding: 15px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .chat-msg {
+      background: #2b2b2b;
+      padding: 8px 12px;
+      border-radius: 8px;
       font-size: 14px;
-      color: #aaa;
+    }
+    .chat-msg .sender {
+      font-size: 11px;
+      color: #4caf50;
+      margin-bottom: 2px;
+    }
+    .chat-msg .time {
+      font-size: 10px;
+      color: #777;
+      float: right;
+    }
+    #chat-input-area {
+      padding: 10px;
+      display: flex;
+      gap: 8px;
+      background: #252525;
+    }
+    #chat-input {
+      flex: 1;
+      padding: 10px;
+      border-radius: 6px;
+      border: none;
+      background: #181818;
+      color: #fff;
+    }
+    #send-btn {
+      padding: 10px 15px;
+      background: #4caf50;
+      border: none;
+      border-radius: 6px;
+      color: #fff;
+      cursor: pointer;
+      font-weight: bold;
+    }
+
+    @media (max-width: 768px) {
+      #app-container { flex-direction: column; }
+      #chat-section { width: 100%; height: 250px; }
     }
   </style>
 </head>
 <body>
 
-  <div class="card">
-    <h2>Голосовой звонок</h2>
-    
-    <label for="role">Кто вы?</label>
-    <select id="role">
-      <option value="son">Я (Сын)</option>
-      <option value="father">Отец</option>
-    </select>
-
-    <button id="callBtn">Позвонить</button>
-    <div id="status">Выберите роль и нажмите Позвонить</div>
+  <!-- Модальное окно входа -->
+  <div class="modal-overlay" id="authModal">
+    <div class="modal">
+      <h2>Семейный Чат</h2>
+      <input type="text" id="userNameInput" placeholder="Ваше имя" required />
+      <select id="roleSelect">
+        <option value="Сын">Сын</option>
+        <option value="Отец">Отец</option>
+        <option value="Мама">Мама</option>
+        <option value="Сестра">Сестра</option>
+        <option value="Брат">Брат</option>
+      </select>
+      <input type="text" id="roomInput" value="family-room" placeholder="Название комнаты" />
+      <button id="joinBtn">Войти</button>
+    </div>
   </div>
 
-  <audio id="remoteAudio" autoplay></audio>
+  <div id="app-container">
+    <!-- Сетка видео и кнопки -->
+    <div id="video-section">
+      <div id="video-grid"></div>
+      <div id="controls">
+        <button class="control-btn" id="toggleAudioBtn">🎤 Микрофон</button>
+        <button class="control-btn" id="toggleVideoBtn">📷 Камера</button>
+        <button class="control-btn leave" id="leaveBtn">Выйти</button>
+      </div>
+    </div>
+
+    <!-- Текстовый чат -->
+    <div id="chat-section">
+      <div id="chat-header">Семейный чат</div>
+      <div id="chat-messages"></div>
+      <div id="chat-input-area">
+        <input type="text" id="chat-input" placeholder="Сообщение..." />
+        <button id="send-btn">></button>
+      </div>
+    </div>
+  </div>
 
   <script src="/socket.io/socket.io.js"></script>
   <script>
     const socket = io();
     let localStream;
-    let peerConnection;
+    const peers = {}; // socketId -> RTCPeerConnection
 
-    const callBtn = document.getElementById('callBtn');
-    const roleSelect = document.getElementById('role');
-    const statusDiv = document.getElementById('status');
-    const remoteAudio = document.getElementById('remoteAudio');
+    const authModal = document.getElementById('authModal');
+    const userNameInput = document.getElementById('userNameInput');
+    const roleSelect = document.getElementById('roleSelect');
+    const roomInput = document.getElementById('roomInput');
+    const joinBtn = document.getElementById('joinBtn');
 
-    // Настройки STUN и TURN серверов для пробития мобильного интернета (NAT)
+    const videoGrid = document.getElementById('video-grid');
+    const toggleAudioBtn = document.getElementById('toggleAudioBtn');
+    const toggleVideoBtn = document.getElementById('toggleVideoBtn');
+    const leaveBtn = document.getElementById('leaveBtn');
+
+    const chatMessages = document.getElementById('chat-messages');
+    const chatInput = document.getElementById('chat-input');
+    const sendBtn = document.getElementById('send-btn');
+
     const rtcConfig = {
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
-        {
-          urls: 'turn:openrelay.metered.ca:80',
-          username: 'openrelay',
-          credential: 'openrelay'
-        },
-        {
-          urls: 'turn:openrelay.metered.ca:443',
-          username: 'openrelay',
-          credential: 'openrelay'
-        }
+        { urls: 'turn:openrelay.metered.ca:80', username: 'openrelay', credential: 'openrelay' },
+        { urls: 'turn:openrelay.metered.ca:443', username: 'openrelay', credential: 'openrelay' }
       ]
     };
 
-    callBtn.onclick = async () => {
+    // Автоподгрузка из localStorage
+    window.onload = () => {
+      const savedName = localStorage.getItem('family_chat_username');
+      const savedRole = localStorage.getItem('family_chat_role');
+      if (savedName) userNameInput.value = savedName;
+      if (savedRole) roleSelect.value = savedRole;
+    };
+
+    joinBtn.onclick = async () => {
+      const userName = userNameInput.value.trim();
       const role = roleSelect.value;
-      socket.emit('join-room', role);
-      statusDiv.innerText = "Подключение к сети...";
-      callBtn.disabled = true;
+      const room = roomInput.value.trim() || 'family-room';
+
+      if (!userName) return alert('Введите имя!');
+
+      // Сохранение профиля
+      localStorage.setItem('family_chat_username', userName);
+      localStorage.setItem('family_chat_role', role);
+
+      authModal.style.display = 'none';
 
       try {
-        localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-        statusDiv.innerText = "Микрофон подключен. Ожидание ответа...";
+        localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+        addVideoCard('local', `${userName} (${role}) - Вы`, localStream, true);
+
+        socket.emit('join-room', { room, userName, role });
       } catch (err) {
-        statusDiv.innerText = "Ошибка: Доступ к микрофону отклонен!";
-        callBtn.disabled = false;
-        return;
+        alert('Ошибка доступа к камере или микрофону: ' + err.message);
       }
     };
 
-    socket.on('user-connected', async () => {
-      statusDiv.innerText = "Собеседник вошел. Начинаем звонок...";
-      createPeerConnection();
-      localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+    // Сигналинг WebRTC
+    socket.on('all-users', (users) => {
+      users.forEach(({ socketId, user }) => {
+        const pc = createPeerConnection(socketId, user);
+        peers[socketId] = pc;
 
-      const offer = await peerConnection.createOffer();
-      await peerConnection.setLocalDescription(offer);
-      socket.emit('offer', offer);
+        localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+
+        pc.createOffer().then(offer => {
+          pc.setLocalDescription(offer);
+          socket.emit('offer', { target: socketId, offer });
+        });
+      });
     });
 
-    socket.on('offer', async (offer) => {
-      statusDiv.innerText = "Входящий вызов...";
-      createPeerConnection();
-      localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
-
-      await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
-      const answer = await peerConnection.createAnswer();
-      await peerConnection.setLocalDescription(answer);
-      socket.emit('answer', answer);
+    socket.on('user-joined', ({ socketId, user }) => {
+      const pc = createPeerConnection(socketId, user);
+      peers[socketId] = pc;
+      localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
     });
 
-    socket.on('answer', async (answer) => {
-      await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-      statusDiv.innerText = "Разговор идет...";
+    socket.on('offer', async ({ caller, user, offer }) => {
+      let pc = peers[caller];
+      if (!pc) {
+        pc = createPeerConnection(caller, user);
+        peers[caller] = pc;
+        localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+      }
+
+      await pc.setRemoteDescription(new RTCSessionDescription(offer));
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+
+      socket.emit('answer', { target: caller, answer });
     });
 
-    socket.on('ice-candidate', async (candidate) => {
-      if (peerConnection) {
-        await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+    socket.on('answer', async ({ responder, answer }) => {
+      const pc = peers[responder];
+      if (pc) {
+        await pc.setRemoteDescription(new RTCSessionDescription(answer));
       }
     });
 
-    function createPeerConnection() {
-      peerConnection = new RTCPeerConnection(rtcConfig);
+    socket.on('ice-candidate', async ({ sender, candidate }) => {
+      const pc = peers[sender];
+      if (pc) {
+        await pc.addIceCandidate(new RTCIceCandidate(candidate));
+      }
+    });
 
-      peerConnection.onicecandidate = (event) => {
-        if (event.candidate) {
-          socket.emit('ice-candidate', event.candidate);
+    socket.on('user-left', (socketId) => {
+      if (peers[socketId]) {
+        peers[socketId].close();
+        delete peers[socketId];
+      }
+      removeVideoCard(socketId);
+    });
+
+    function createPeerConnection(socketId, user) {
+      const pc = new RTCPeerConnection(rtcConfig);
+
+      pc.onicecandidate = (e) => {
+        if (e.candidate) {
+          socket.emit('ice-candidate', { target: socketId, candidate: e.candidate });
         }
       };
 
-      peerConnection.ontrack = (event) => {
-        remoteAudio.srcObject = event.streams[0];
-        statusDiv.innerText = "Соединение установлено! Говорите.";
+      pc.ontrack = (e) => {
+        addVideoCard(socketId, `${user.userName} (${user.role})`, e.streams[0], false);
       };
+
+      return pc;
     }
+
+    function addVideoCard(id, labelText, stream, isMuted) {
+      if (document.getElementById(`card-${id}`)) return;
+
+      const card = document.createElement('div');
+      card.className = 'video-card';
+      card.id = `card-${id}`;
+
+      const video = document.createElement('video');
+      video.autoplay = true;
+      video.playsInline = true;
+      video.srcObject = stream;
+      if (isMuted) video.muted = true;
+
+      const label = document.createElement('div');
+      label.className = 'video-label';
+      label.innerText = labelText;
+
+      card.appendChild(video);
+      card.appendChild(label);
+      videoGrid.appendChild(card);
+    }
+
+    function removeVideoCard(id) {
+      const card = document.getElementById(`card-${id}`);
+      if (card) card.remove();
+    }
+
+    // Управление микрофоном и камерой
+    toggleAudioBtn.onclick = () => {
+      const audioTrack = localStream.getAudioTracks()[0];
+      if (audioTrack) {
+        audioTrack.enabled = !audioTrack.enabled;
+        toggleAudioBtn.classList.toggle('active', !audioTrack.enabled);
+        toggleAudioBtn.innerText = audioTrack.enabled ? '🎤 Микрофон' : '🔇 Выкл. Микр';
+      }
+    };
+
+    toggleVideoBtn.onclick = () => {
+      const videoTrack = localStream.getVideoTracks()[0];
+      if (videoTrack) {
+        videoTrack.enabled = !videoTrack.enabled;
+        toggleVideoBtn.classList.toggle('active', !videoTrack.enabled);
+        toggleVideoBtn.innerText = videoTrack.enabled ? '📷 Камера' : '🚫 Выкл. Кам';
+      }
+    };
+
+    leaveBtn.onclick = () => {
+      location.reload();
+    };
+
+    // Логика чата
+    function sendMessage() {
+      const text = chatInput.value.trim();
+      if (text) {
+        socket.emit('chat-message', text);
+        chatInput.value = '';
+      }
+    }
+
+    sendBtn.onclick = sendMessage;
+    chatInput.onkeypress = (e) => { if (e.key === 'Enter') sendMessage(); };
+
+    socket.on('chat-message', ({ user, role, text, time }) => {
+      const msgDiv = document.createElement('div');
+      msgDiv.className = 'chat-msg';
+      msgDiv.innerHTML = `
+        <div class="sender">${user} (${role}) <span class="time">${time}</span></div>
+        <div class="text">${text}</div>
+      `;
+      chatMessages.appendChild(msgDiv);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+    });
   </script>
 </body>
 </html>
