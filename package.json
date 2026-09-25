@@ -1,15 +1,13 @@
 {
-  "name": "call-server",
+  "name": "web-call",
   "version": "1.0.0",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
   "description": "",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
   "dependencies": {
-    "ws": "^8.21.3"
+    "express": "^4.19.2",
+    "ws": "^8.16.0"
   }
 }
