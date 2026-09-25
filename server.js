@@ -4,60 +4,81 @@ const { Server } = require('socket.io');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, { cors: { origin: "*" } });
+const io = new Server(server, {
+  cors: { origin: "*" }
+});
 
 app.use(express.static('public'));
 
-// Храним онлайн-пользователей: { socketId: { userName, role } }
-const onlineUsers = {};
+// Хранилище подключенных пользователей: socket.id -> { userName, role }
+const users = {};
 
 io.on('connection', (socket) => {
-  // Авторизация пользователя
-  socket.on('register-user', ({ userName, role }) => {
-    onlineUsers[socket.id] = { socketId: socket.id, userName, role };
-    io.emit('update-user-list', Object.values(onlineUsers));
+  socket.on('join-room', ({ room, userName, role }) => {
+    socket.join(room);
+    socket.room = room;
+    users[socket.id] = { userName, role };
+
+    // Получаем список остальных участников комнаты
+    const clientsInRoom = Array.from(io.sockets.adapter.rooms.get(room) || [])
+      .filter(id => id !== socket.id)
+      .map(id => ({ socketId: id, user: users[id] }));
+
+    // Отправляем новому участнику список тех, кто уже в комнате
+    socket.emit('all-users', clientsInRoom);
+
+    // Уведомляем остальных о подключении нового участника
+    socket.to(room).emit('user-joined', {
+      socketId: socket.id,
+      user: users[socket.id]
+    });
   });
 
-  // Запрос на звонок (от одного к другому)
-  socket.on('call-user', ({ userToCall, offer }) => {
-    io.to(userToCall).emit('incoming-call', {
-      from: socket.id,
-      caller: onlineUsers[socket.id],
+  // Сигналинг WebRTC
+  socket.on('offer', ({ target, offer }) => {
+    io.to(target).emit('offer', {
+      caller: socket.id,
+      user: users[socket.id],
       offer
     });
   });
 
-  // Ответ на звонок (принятие)
-  socket.on('accept-call', ({ to, answer }) => {
-    io.to(to).emit('call-accepted', { answer });
-  });
-
-  // Отклонение или завершение звонка
-  socket.on('end-call', ({ to }) => {
-    io.to(to).emit('call-ended');
-  });
-
-  // ICE кандидаты
-  socket.on('ice-candidate', ({ target, candidate }) => {
-    io.to(target).emit('ice-candidate', { candidate });
-  });
-
-  // Личные сообщения в чате
-  socket.on('private-message', ({ to, text }) => {
-    const sender = onlineUsers[socket.id];
-    io.to(to).emit('private-message', {
-      sender: sender ? sender.userName : 'Собеседник',
-      text,
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  socket.on('answer', ({ target, answer }) => {
+    io.to(target).emit('answer', {
+      responder: socket.id,
+      answer
     });
+  });
+
+  socket.on('ice-candidate', ({ target, candidate }) => {
+    io.to(target).emit('ice-candidate', {
+      sender: socket.id,
+      candidate
+    });
+  });
+
+  // Текстовый чат
+  socket.on('chat-message', (msg) => {
+    if (socket.room && users[socket.id]) {
+      io.to(socket.room).emit('chat-message', {
+        user: users[socket.id].userName,
+        role: users[socket.id].role,
+        text: msg,
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      });
+    }
   });
 
   // Отключение
   socket.on('disconnect', () => {
-    delete onlineUsers[socket.id];
-    io.emit('update-user-list', Object.values(onlineUsers));
+    if (socket.room) {
+      socket.to(socket.room).emit('user-left', socket.id);
+    }
+    delete users[socket.id];
   });
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Сервер запущен на порту ${PORT}`));
+server.listen(PORT, () => {
+  console.log(`Сервер запущен на порту ${PORT}`);
+});
