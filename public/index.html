@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Личный звонок</title>
+  <style>
+    body { font-family: sans-serif; text-align: center; padding-top: 50px; background: #121212; color: white; }
+    button { padding: 15px 30px; font-size: 18px; border-radius: 8px; border: none; background: #28a745; color: white; cursor: pointer; }
+    select { padding: 10px; font-size: 16px; margin-bottom: 20px; }
+  </style>
+</head>
+<body>
+  <h1>Голосовой звонок</h1>
+  
+  <label>Кто вы?</label><br>
+  <select id="role" onchange="register()">
+    <option value="son">Я (Сын)</option>
+    <option value="dad">Отец</option>
+  </select>
+
+  <br><br>
+  <button onclick="startCall()">Позвонить</button>
+  <audio id="remoteAudio" autoplay></audio>
+
+  <script>
+    let ws;
+    let peer;
+    let myId = 'son';
+    let targetId = 'dad';
+
+    function register() {
+      myId = document.getElementById('role').value;
+      targetId = myId === 'son' ? 'dad' : 'son';
+      
+      const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      ws = new WebSocket(`${protocol}//${location.host}`);
+
+      ws.onopen = () => {
+        ws.send(JSON.stringify({ type: 'register', userId: myId }));
+      };
+
+      ws.onmessage = async (event) => {
+        const data = JSON.parse(event.data);
+        if (!peer) setupWebRTC();
+
+        if (data.type === 'offer') {
+          await peer.setRemoteDescription(new RTCSessionDescription(data.sdp));
+          const answer = await peer.createAnswer();
+          await peer.setLocalDescription(answer);
+          ws.send(JSON.stringify({ targetId, type: 'answer', sdp: answer }));
+        } else if (data.type === 'answer') {
+          await peer.setRemoteDescription(new RTCSessionDescription(data.sdp));
+        } else if (data.type === 'candidate') {
+          await peer.addIceCandidate(new RTCIceCandidate(data.candidate));
+        }
+      };
+    }
+
+    async function setupWebRTC() {
+      peer = new RTCPeerConnection({
+        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+      });
+
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      stream.getTracks().forEach(track => peer.addTrack(track, stream));
+
+      peer.ontrack = (event) => {
+        document.getElementById('remoteAudio').srcObject = event.streams[0];
+      };
+
+      peer.onicecandidate = (event) => {
+        if (event.candidate) {
+          ws.send(JSON.stringify({ targetId, type: 'candidate', candidate: event.candidate }));
+        }
+      };
+    }
+
+    async function startCall() {
+      if (!peer) await setupWebRTC();
+      const offer = await peer.createOffer();
+      await peer.setLocalDescription(offer);
+      ws.send(JSON.stringify({ targetId, type: 'offer', sdp: offer }));
+    }
+
+    register();
+  </script>
+</body>
+</html>
