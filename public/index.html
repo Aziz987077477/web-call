@@ -3,87 +3,162 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Личный звонок</title>
+  <title>Приватный звонок</title>
   <style>
-    body { font-family: sans-serif; text-align: center; padding-top: 50px; background: #121212; color: white; }
-    button { padding: 15px 30px; font-size: 18px; border-radius: 8px; border: none; background: #28a745; color: white; cursor: pointer; }
-    select { padding: 10px; font-size: 16px; margin-bottom: 20px; }
+    body {
+      font-family: Arial, sans-serif;
+      background: #121212;
+      color: #fff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      margin: 0;
+    }
+    .card {
+      background: #1e1e1e;
+      padding: 24px;
+      border-radius: 12px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+      text-align: center;
+      width: 300px;
+    }
+    select, button {
+      width: 100%;
+      padding: 12px;
+      margin-top: 12px;
+      border-radius: 6px;
+      border: none;
+      font-size: 16px;
+    }
+    select {
+      background: #2b2b2b;
+      color: #fff;
+    }
+    button {
+      background: #28a745;
+      color: #fff;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    button:disabled {
+      background: #555;
+    }
+    #status {
+      margin-top: 15px;
+      font-size: 14px;
+      color: #aaa;
+    }
   </style>
 </head>
 <body>
-  <h1>Голосовой звонок</h1>
-  
-  <label>Кто вы?</label><br>
-  <select id="role" onchange="register()">
-    <option value="son">Я (Сын)</option>
-    <option value="dad">Отец</option>
-  </select>
 
-  <br><br>
-  <button onclick="startCall()">Позвонить</button>
+  <div class="card">
+    <h2>Голосовой звонок</h2>
+    
+    <label for="role">Кто вы?</label>
+    <select id="role">
+      <option value="son">Я (Сын)</option>
+      <option value="father">Отец</option>
+    </select>
+
+    <button id="callBtn">Позвонить</button>
+    <div id="status">Выберите роль и нажмите Позвонить</div>
+  </div>
+
   <audio id="remoteAudio" autoplay></audio>
 
+  <script src="/socket.io/socket.io.js"></script>
   <script>
-    let ws;
-    let peer;
-    let myId = 'son';
-    let targetId = 'dad';
+    const socket = io();
+    let localStream;
+    let peerConnection;
 
-    function register() {
-      myId = document.getElementById('role').value;
-      targetId = myId === 'son' ? 'dad' : 'son';
-      
-      const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-      ws = new WebSocket(`${protocol}//${location.host}`);
+    const callBtn = document.getElementById('callBtn');
+    const roleSelect = document.getElementById('role');
+    const statusDiv = document.getElementById('status');
+    const remoteAudio = document.getElementById('remoteAudio');
 
-      ws.onopen = () => {
-        ws.send(JSON.stringify({ type: 'register', userId: myId }));
-      };
-
-      ws.onmessage = async (event) => {
-        const data = JSON.parse(event.data);
-        if (!peer) setupWebRTC();
-
-        if (data.type === 'offer') {
-          await peer.setRemoteDescription(new RTCSessionDescription(data.sdp));
-          const answer = await peer.createAnswer();
-          await peer.setLocalDescription(answer);
-          ws.send(JSON.stringify({ targetId, type: 'answer', sdp: answer }));
-        } else if (data.type === 'answer') {
-          await peer.setRemoteDescription(new RTCSessionDescription(data.sdp));
-        } else if (data.type === 'candidate') {
-          await peer.addIceCandidate(new RTCIceCandidate(data.candidate));
+    // Настройки STUN и TURN серверов для пробития мобильного интернета (NAT)
+    const rtcConfig = {
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        {
+          urls: 'turn:openrelay.metered.ca:80',
+          username: 'openrelay',
+          credential: 'openrelay'
+        },
+        {
+          urls: 'turn:openrelay.metered.ca:443',
+          username: 'openrelay',
+          credential: 'openrelay'
         }
-      };
-    }
+      ]
+    };
 
-    async function setupWebRTC() {
-      peer = new RTCPeerConnection({
-        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
-      });
+    callBtn.onclick = async () => {
+      const role = roleSelect.value;
+      socket.emit('join-room', role);
+      statusDiv.innerText = "Подключение к сети...";
+      callBtn.disabled = true;
 
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-      stream.getTracks().forEach(track => peer.addTrack(track, stream));
+      try {
+        localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+        statusDiv.innerText = "Микрофон подключен. Ожидание ответа...";
+      } catch (err) {
+        statusDiv.innerText = "Ошибка: Доступ к микрофону отклонен!";
+        callBtn.disabled = false;
+        return;
+      }
+    };
 
-      peer.ontrack = (event) => {
-        document.getElementById('remoteAudio').srcObject = event.streams[0];
-      };
+    socket.on('user-connected', async () => {
+      statusDiv.innerText = "Собеседник вошел. Начинаем звонок...";
+      createPeerConnection();
+      localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
 
-      peer.onicecandidate = (event) => {
+      const offer = await peerConnection.createOffer();
+      await peerConnection.setLocalDescription(offer);
+      socket.emit('offer', offer);
+    });
+
+    socket.on('offer', async (offer) => {
+      statusDiv.innerText = "Входящий вызов...";
+      createPeerConnection();
+      localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+
+      await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+      const answer = await peerConnection.createAnswer();
+      await peerConnection.setLocalDescription(answer);
+      socket.emit('answer', answer);
+    });
+
+    socket.on('answer', async (answer) => {
+      await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+      statusDiv.innerText = "Разговор идет...";
+    });
+
+    socket.on('ice-candidate', async (candidate) => {
+      if (peerConnection) {
+        await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+      }
+    });
+
+    function createPeerConnection() {
+      peerConnection = new RTCPeerConnection(rtcConfig);
+
+      peerConnection.onicecandidate = (event) => {
         if (event.candidate) {
-          ws.send(JSON.stringify({ targetId, type: 'candidate', candidate: event.candidate }));
+          socket.emit('ice-candidate', event.candidate);
         }
       };
-    }
 
-    async function startCall() {
-      if (!peer) await setupWebRTC();
-      const offer = await peer.createOffer();
-      await peer.setLocalDescription(offer);
-      ws.send(JSON.stringify({ targetId, type: 'offer', sdp: offer }));
+      peerConnection.ontrack = (event) => {
+        remoteAudio.srcObject = event.streams[0];
+        statusDiv.innerText = "Соединение установлено! Говорите.";
+      };
     }
-
-    register();
   </script>
 </body>
 </html>

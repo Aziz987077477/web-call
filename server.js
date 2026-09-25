@@ -1,32 +1,36 @@
 const express = require('express');
-const WebSocket = require('ws');
-const path = require('path');
+const http = require('http');
+const { Server } = require('socket.io');
 
 const app = express();
-app.use(express.static(path.join(__dirname, 'public')));
-
-const server = app.listen(3000, () => {
-  console.log('Сайт запущен на http://localhost:3000');
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: { origin: "*" }
 });
 
-const wss = new WebSocket.Server({ server });
-const clients = {};
+app.use(express.static('public'));
 
-wss.on('connection', (ws) => {
-  let userId = null;
-
-  ws.on('message', (message) => {
-    const data = JSON.parse(message);
-
-    if (data.type === 'register') {
-      userId = data.userId;
-      clients[userId] = ws;
-    } else if (data.targetId && clients[data.targetId]) {
-      clients[data.targetId].send(JSON.stringify(data));
-    }
+io.on('connection', (socket) => {
+  socket.on('join-room', (role) => {
+    socket.join('call-room');
+    socket.role = role;
+    socket.to('call-room').emit('user-connected', role);
   });
 
-  ws.on('close', () => {
-    if (userId) delete clients[userId];
+  socket.on('offer', (data) => {
+    socket.to('call-room').emit('offer', data);
   });
+
+  socket.on('answer', (data) => {
+    socket.to('call-room').emit('answer', data);
+  });
+
+  socket.on('ice-candidate', (candidate) => {
+    socket.to('call-room').emit('ice-candidate', candidate);
+  });
+});
+
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+  console.log(`Сервер запущен на порту ${PORT}`);
 });
