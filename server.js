@@ -8,12 +8,10 @@ const io = new Server(server, { cors: { origin: "*" } });
 
 app.use(express.static('public'));
 
-// Реестр пользователей: phone -> { phone, name, socketId, online }
-const registeredUsers = {};
+const registeredUsers = {}; // phone -> { phone, name, socketId, online }
 
 io.on('connection', (socket) => {
-  
-  // Авторизация / Регистрация по номеру
+
   socket.on('register', ({ name, phone }) => {
     socket.phone = phone;
     registeredUsers[phone] = {
@@ -22,13 +20,11 @@ io.on('connection', (socket) => {
       socketId: socket.id,
       online: true
     };
-
-    // Рассылаем обновленный список контактов всем онлайн пользователям
     io.emit('contacts-list', Object.values(registeredUsers));
   });
 
-  // Отправка личного сообщения в чате 1 на 1
-  socket.on('send-private-msg', ({ toPhone, text }) => {
+  // Отправка сообщений (текст, фото, файл, голосовое)
+  socket.on('send-private-msg', ({ toPhone, text, fileData, fileName, isVoice }) => {
     const recipient = registeredUsers[toPhone];
     const sender = registeredUsers[socket.phone];
 
@@ -36,20 +32,21 @@ io.on('connection', (socket) => {
       fromPhone: socket.phone,
       senderName: sender ? sender.name : 'Контакты',
       text,
+      fileData,
+      fileName,
+      isVoice,
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
 
-    // Отправляем получателю
     if (recipient && recipient.socketId) {
       io.to(recipient.socketId).emit('receive-private-msg', messageData);
     }
   });
 
-  // Инициирование вызова (Аудио или Видео)
+  // Звонки (Аудио / Видео)
   socket.on('call-user', ({ targetPhone, offer, callType }) => {
     const target = registeredUsers[targetPhone];
     const caller = registeredUsers[socket.phone];
-
     if (target && target.socketId) {
       io.to(target.socketId).emit('incoming-call', {
         fromPhone: socket.phone,
@@ -60,7 +57,6 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Принятие вызова
   socket.on('accept-call', ({ targetPhone, answer }) => {
     const target = registeredUsers[targetPhone];
     if (target && target.socketId) {
@@ -68,7 +64,6 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Отклонение / завершение вызова
   socket.on('end-call', ({ targetPhone }) => {
     const target = registeredUsers[targetPhone];
     if (target && target.socketId) {
@@ -76,7 +71,6 @@ io.on('connection', (socket) => {
     }
   });
 
-  // WebRTC ICE кандидаты
   socket.on('ice-candidate', ({ targetPhone, candidate }) => {
     const target = registeredUsers[targetPhone];
     if (target && target.socketId) {
@@ -84,7 +78,6 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Отключение
   socket.on('disconnect', () => {
     if (socket.phone && registeredUsers[socket.phone]) {
       registeredUsers[socket.phone].online = false;
@@ -94,4 +87,4 @@ io.on('connection', (socket) => {
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`WhatsApp Server запущен на порту ${PORT}`));
+server.listen(PORT, () => console.log(`WhatsApp Mega Server running on port ${PORT}`));
